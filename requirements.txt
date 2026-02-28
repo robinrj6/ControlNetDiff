@@ -7,4 +7,3 @@ datasets
 xformers
 bitsandbytes
 diffusers
-dataset-tools
