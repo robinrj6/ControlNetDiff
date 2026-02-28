@@ -6,5 +6,5 @@ tensorboard
 datasets
 xformers
 bitsandbytes
-diffusers>=0.37.0.dev0
+diffusers
 dataset-tools
