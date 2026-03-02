@@ -36,24 +36,57 @@ def estimate_sigma(image):
     Returns:
         float: Estimated sigma value
     """
-    # Apply Laplacian filter to detect edges/noise
-    laplacian = filters.laplace(image)
-    laplacian_var = laplacian.var()
+    try:
+        if image.size == 0 or image.std() < 1e-6:
+            return 1.0
+        
+        laplacian = filters.laplace(image)
+        laplacian_var = np.abs(laplacian).var()
+        
+        if laplacian_var < 0.0001:
+            sigma = 0.5
+        elif laplacian_var < 0.001:
+            sigma = 1.0
+        elif laplacian_var < 0.01:
+            sigma = 1.5
+        elif laplacian_var < 0.1:
+            sigma = 2.5
+        else:
+            sigma = 3.5
+        
+        return sigma
+    except Exception:
+        return 1.0
+
+
+def estimate_thresholds(image):
+    """
+    Estimate optimal low and high thresholds for Canny edge detection.
+    Based on the image gradient magnitude distribution.
     
-    # Map variance to sigma (lower variance = less noise = lower sigma needed)
-    # Empirically tuned for typical images
-    if laplacian_var < 0.001:
-        sigma = 0.5  # Very clean image
-    elif laplacian_var < 0.01:
-        sigma = 1.0  # Clean image
-    elif laplacian_var < 0.1:
-        sigma = 1.5  # Moderate noise
-    elif laplacian_var < 0.5:
-        sigma = 2.5  # Noisy image
-    else:
-        sigma = 3.5  # Very noisy image
-    
-    return sigma
+    Args:
+        image: Input image (grayscale, normalized to 0-1)
+        
+    Returns:
+        tuple: (low_threshold, high_threshold)
+    """
+    try:
+        # Compute gradient magnitude
+        sx = filters.sobel_h(image)
+        sy = filters.sobel_v(image)
+        magnitude = np.sqrt(sx**2 + sy**2)
+        
+        # Use percentiles to determine thresholds
+        p_low = np.percentile(magnitude, 40)
+        p_high = np.percentile(magnitude, 85)
+        
+        # Scale to reasonable ranges
+        low_threshold = max(0.05, p_low * 0.5)
+        high_threshold = max(0.15, p_high * 1.2)
+        
+        return low_threshold, high_threshold
+    except Exception:
+        return 0.1, 0.3
 
 
 def process_images(input_folder, output_folder, sigma=None, auto_sigma=False):
@@ -70,7 +103,7 @@ def process_images(input_folder, output_folder, sigma=None, auto_sigma=False):
     Path(output_folder).mkdir(parents=True, exist_ok=True)
     
     # Supported image extensions
-    supported_formats = ('.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.gif')
+    supported_formats = ('.jpg',)
     
     # Get all image files
     image_files = [f for f in os.listdir(input_folder) 
@@ -84,7 +117,7 @@ def process_images(input_folder, output_folder, sigma=None, auto_sigma=False):
     
     for filename in image_files:
         input_path = os.path.join(input_folder, filename)
-        output_filename = f"{os.path.splitext(filename)[0]}_canny.png"
+        output_filename = f"{os.path.splitext(filename)[0]}_canny.jpg"
         output_path = os.path.join(output_folder, output_filename)
         
         try:
@@ -97,15 +130,17 @@ def process_images(input_folder, output_folder, sigma=None, auto_sigma=False):
             # Normalize to 0-1 range
             image = image.astype(float) / 255.0 if image.max() > 1 else image.astype(float)
             
-            # Determine sigma
+            # Determine sigma and thresholds
             if auto_sigma:
                 current_sigma = estimate_sigma(image)
-                print(f"  → Estimated sigma: {current_sigma:.2f}")
+                low_thresh, high_thresh = estimate_thresholds(image)
+                print(f"  → Estimated sigma: {current_sigma:.2f}, thresholds: ({low_thresh:.3f}, {high_thresh:.3f})")
             else:
                 current_sigma = sigma if sigma is not None else 1.0
+                low_thresh, high_thresh = 0.1, 0.3
             
-            # Apply Canny edge detection
-            edges = feature.canny(image, sigma=current_sigma)
+            # Apply Canny edge detection with estimated parameters
+            edges = feature.canny(image, sigma=current_sigma, low_threshold=low_thresh, high_threshold=high_thresh)
             
             # Convert to 0-255 range and save
             edges_uint8 = (edges * 255).astype(np.uint8)
