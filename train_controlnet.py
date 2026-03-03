@@ -37,6 +37,7 @@ from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from PIL import Image
+from PIL import Image as PILImage
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
@@ -694,10 +695,16 @@ def make_train_dataset(args, tokenizer, accelerator):
     )
 
     def preprocess_train(examples):
-        images = [image.convert("RGB") for image in examples[image_column]]
+        images = [
+            Image.open(image).convert("RGB") if isinstance(image, str) else image.convert("RGB")
+            for image in examples[image_column]
+        ]
         images = [image_transforms(image) for image in images]
 
-        conditioning_images = [image.convert("RGB") for image in examples[conditioning_image_column]]
+        conditioning_images = [
+            Image.open(image).convert("RGB") if isinstance(image, str) else image.convert("RGB")
+            for image in examples[conditioning_image_column]
+        ]
         conditioning_images = [conditioning_image_transforms(image) for image in conditioning_images]
 
         examples["pixel_values"] = images

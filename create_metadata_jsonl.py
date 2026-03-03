@@ -107,8 +107,10 @@ def main() -> None:
 
             row = {
                 "text": caption,
-                "image": f"{args.image_prefix}/{file_name}",
-                "conditioning_image": f"{args.conditioning_prefix}/{file_name}",
+                # Required by newer `datasets` imagefolder loader
+                "file_name": f"{args.image_prefix}/{file_name}",
+                # Additional image column, exposed as `conditioning` in the dataset
+                "conditioning_file_name": f"{args.conditioning_prefix}/{file_name}",
             }
             out_f.write(json.dumps(row, ensure_ascii=False) + "\n")
             written += 1
