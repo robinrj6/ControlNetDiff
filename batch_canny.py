@@ -71,7 +71,7 @@ def main():
     with ProcessPoolExecutor(max_workers=args.workers) as ex:
         for p in imgs:
             rel = p.relative_to(in_dir)
-            out_path = out_dir / rel.with_suffix(".png")  # store edges as PNG
+            out_path = out_dir / rel.with_suffix(".jpg")  # store edges as PNG
             futures.append(ex.submit(process_one, str(p), str(out_path), args.sigma, args.invert))
 
         done = 0
