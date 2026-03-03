@@ -4,13 +4,13 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --time=01:00:00
+#SBATCH --time=09:00:00
 #SBATCH --output=logs/controlnet_train_%j.log
 #SBATCH --error=logs/controlnet_train_%j.err
 
-export MODEL_DIR="/home/hpc/rlvl/rlvl165v/Desktop/diffusers/examples/controlnet/shared/models/sd15"
-export DATASET_DIR="/home/hpc/rlvl/rlvl165v/Desktop/diffusers/examples/controlnet/shared/datasets/fill50k/extracted/"
-export OUTPUT_DIR="/home/hpc/rlvl/rlvl165v/Desktop/diffusers/examples/controlnet/output/"
+export MODEL_DIR="/home/woody/rlvl/rlvl165v/ControlNetDiff/shared/models/sd15"
+export DATASET_DIR="/home/woody/rlvl/rlvl165v/ControlNetDiff/shared/datasets/coco/canny/"
+export OUTPUT_DIR="/home/woody/rlvl/rlvl165v/ControlNetDiff/output/"
 
 export HF_HOME="/home/woody/rlvl/rlvl165v/.cache/huggingface"
 export HF_DATASETS_CACHE="$HF_HOME/datasets"
@@ -34,6 +34,7 @@ accelerate launch train_controlnet.py \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
  --train_batch_size=1 \
  --gradient_accumulation_steps=4 \
+ --num_train_epochs=1 \
  --max_train_steps=50 \
  --checkpointing_steps=10 \
  --validation_steps=10 \
@@ -41,3 +42,4 @@ accelerate launch train_controlnet.py \
  --use_8bit_adam \
  --enable_xformers_memory_efficient_attention \
  --set_grads_to_none
+
