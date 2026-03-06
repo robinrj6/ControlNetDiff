@@ -30,4 +30,4 @@ image = pipe(
     strength=0.75,
     generator=generator
 ).images[0]
-image.save("./output_sd_only.png")
+image.save("./output_sd_only_with_image.png")
