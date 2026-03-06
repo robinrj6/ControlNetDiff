@@ -1,6 +1,7 @@
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, UniPCMultistepScheduler
 from diffusers.utils import load_image
 import torch
+import os
 
 base_model_path = "/home/woody/rlvl/rlvl165v/ControlNetDiff/shared/models/sd15/"
 # Point directly to the output directory which contains config.json and safetensors file
@@ -27,11 +28,47 @@ pipe.enable_xformers_memory_efficient_attention()
 pipe.enable_model_cpu_offload()
 
 control_image = load_image("./mountain.jpg")
-prompt = "create a realistic mountains with sunlight on background"
 
-# generate image
-generator = torch.manual_seed(0)
-image = pipe(
-    prompt, num_inference_steps=20, generator=generator, image=control_image
-).images[0]
-image.save("./output.png")
+# Create output directory if it doesn't exist
+os.makedirs("./results/controlnet", exist_ok=True)
+
+# Test cases with different prompts
+test_cases = [
+    {
+        "name": "no_prompt",
+        "prompt": "",
+        "description": "No prompt (empty string)"
+    },
+    {
+        "name": "insufficient_prompt",
+        "prompt": "a high-quality image",
+        "description": "Insufficient prompt (doesn't describe content)"
+    },
+    {
+        "name": "conflicting_prompt",
+        "prompt": "delicious cake",
+        "description": "Conflicting prompt (cake for mountain image)"
+    },
+    {
+        "name": "perfect_prompt",
+        "prompt": "create a realistic mountains with sunlight on background",
+        "description": "Perfect prompt (accurate description)"
+    }
+]
+
+# Generate images for each test case
+for test_case in test_cases:
+    print(f"\nGenerating: {test_case['description']}")
+    print(f"Prompt: '{test_case['prompt']}'")
+    
+    generator = torch.manual_seed(0)
+    image = pipe(
+        test_case['prompt'], 
+        num_inference_steps=20, 
+        generator=generator, 
+        image=control_image
+    ).images[0]
+    
+    output_path = f"./results/controlnet/output_{test_case['name']}.png"
+    image.save(output_path)
+    print(f"Saved: {output_path}")
