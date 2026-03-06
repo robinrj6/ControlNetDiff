@@ -23,7 +23,13 @@ control_images = []
 for i in range(1, 6):
     img_path = os.path.join(control_images_dir, f"{i}.jpg")
     if os.path.exists(img_path):
-        control_images.append(load_image(img_path))
+        img = load_image(img_path)
+        # Resize to dimensions divisible by 8 (required by diffusion pipeline)
+        width, height = img.size
+        new_width = (width // 8) * 8
+        new_height = (height // 8) * 8
+        img = img.resize((new_width, new_height))
+        control_images.append(img)
     else:
         print(f"Warning: {img_path} not found")
 
