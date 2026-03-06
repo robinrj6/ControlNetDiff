@@ -7,3 +7,4 @@ datasets
 xformers
 bitsandbytes
 opencv-python
+pytorch-fid
