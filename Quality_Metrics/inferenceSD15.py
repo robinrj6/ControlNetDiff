@@ -42,31 +42,31 @@ prompt_sets = [
         ("no_prompt", ""),
         ("insufficient_prompt", "a high-quality image"),
         ("conflicting_prompt", "delicious cake"),
-        ("perfect_prompt", "a realistic polar bear with sunlight on background")
+        ("perfect_prompt", "A big burly grizzly bear is show with grass in the background.")
     ],
     [  # Image 2
         ("no_prompt", ""),
         ("insufficient_prompt", "a high-quality image"),
         ("conflicting_prompt", "delicious cake"),
-        ("perfect_prompt", "a man wearing police uniform skating on ice")
+        ("perfect_prompt", "a woman standing on skiis while posing for the camera")
     ],
     [  # Image 3
         ("no_prompt", ""),
         ("insufficient_prompt", "a high-quality image"),
         ("conflicting_prompt", "delicious cake"),
-        ("perfect_prompt", "a yellow bus on a green field")
+        ("perfect_prompt", "A bus that is sitting on the street.")
     ],
     [  # Image 4
         ("no_prompt", ""),
         ("insufficient_prompt", "a high-quality image"),
         ("conflicting_prompt", "delicious cake"),
-        ("perfect_prompt", "an elephant walking in from a desert")
+        ("perfect_prompt", "A herd of elephants walking away from a watering hole.")
     ],
     [  # Image 5
         ("no_prompt", ""),
         ("insufficient_prompt", "a high-quality image"),
         ("conflicting_prompt", "delicious cake"),
-        ("perfect_prompt", "a boy holding a green umbrella in the rain")
+        ("perfect_prompt", "A little girl with a big, blue umbrella.")
     ]
 ]
 
