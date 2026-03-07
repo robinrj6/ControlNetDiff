@@ -34,10 +34,10 @@ accelerate launch train_controlnet.py \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
  --train_batch_size=1 \
  --gradient_accumulation_steps=4 \
- --num_train_epochs=1 \
- --max_train_steps=50 \
- --checkpointing_steps=10 \
- --validation_steps=10 \
+ --num_train_epochs=1 \        
+ --max_train_steps=30000 \     
+ --validation_steps=1000 \     
+ --checkpointing_steps=5000 \
  --gradient_checkpointing \
  --use_8bit_adam \
  --enable_xformers_memory_efficient_attention \
