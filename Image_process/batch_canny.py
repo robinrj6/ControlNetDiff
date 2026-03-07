@@ -34,7 +34,7 @@ def process_one(in_path: str, out_path: str, sigma: float, invert: bool):
     if invert:
         edges = 255 - edges  # ControlNet sometimes uses white background/black edges conventions
 
-    ok = cv2.imwrite(str(out_path), edges)
+    ok = cv2.imwrite(str(out_path), edges, [cv2.IMWRITE_PNG_COMPRESSION, 9])
     return (str(in_path), ok, f"low={low},high={high}")
 
 def iter_images(input_dir: Path, recursive: bool):
@@ -71,7 +71,7 @@ def main():
     with ProcessPoolExecutor(max_workers=args.workers) as ex:
         for p in imgs:
             rel = p.relative_to(in_dir)
-            out_path = out_dir / rel.with_suffix(".jpg")  # store edges as PNG
+            out_path = out_dir / rel.with_suffix(".png")  # store edges as PNG
             futures.append(ex.submit(process_one, str(p), str(out_path), args.sigma, args.invert))
 
         done = 0

@@ -11,6 +11,8 @@ Optional:
 --skip-missing to skip missing files
 --image-prefix images (default)
 --conditioning-prefix edges (default)
+--one-caption-per-image
+--skip-missing
 """
 
 
