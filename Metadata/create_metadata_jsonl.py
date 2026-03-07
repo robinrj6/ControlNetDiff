@@ -14,10 +14,11 @@ Optional:
 """
 
 
-def load_coco_pairs(coco_json_path: Path) -> List[Tuple[str, str]]:
+def load_coco_pairs(coco_json_path: Path, one_caption_per_image: bool = False) -> List[Tuple[str, str]]:
     """
     Return (file_name, caption) pairs from a COCO captions JSON.
-    Produces one output row per annotation.
+    By default, produces one output row per annotation.
+    If one_caption_per_image=True, keeps only the first caption per image.
     
     """
     with coco_json_path.open("r", encoding="utf-8") as f:
@@ -38,14 +39,21 @@ def load_coco_pairs(coco_json_path: Path) -> List[Tuple[str, str]]:
             id_to_name[image_id] = file_name
 
     pairs: List[Tuple[str, str]] = []
+    seen_image_ids = set()
     for ann in data["annotations"]:
         if not isinstance(ann, dict):
             continue
         image_id = ann.get("image_id")
         caption = ann.get("caption")
         file_name = id_to_name.get(image_id)
+
+        if one_caption_per_image and image_id in seen_image_ids:
+            continue
+
         if file_name and isinstance(caption, str) and caption.strip():
             pairs.append((file_name, caption.strip()))
+            if one_caption_per_image:
+                seen_image_ids.add(image_id)
 
     return pairs
 
@@ -87,10 +95,18 @@ def main() -> None:
         action="store_true",
         help="If set, skip records whose image file is missing in --images-dir",
     )
+    parser.add_argument(
+        "--one-caption-per-image",
+        action="store_true",
+        help="If set, keep only one caption per image (COCO has multiple captions/image by default)",
+    )
 
     args = parser.parse_args()
 
-    pairs = load_coco_pairs(args.input_json)
+    pairs = load_coco_pairs(
+        args.input_json,
+        one_caption_per_image=args.one_caption_per_image,
+    )
 
     args.output_jsonl.parent.mkdir(parents=True, exist_ok=True)
 
