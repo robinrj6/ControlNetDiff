@@ -25,7 +25,8 @@ from typing import List, Dict, Tuple
 def validate_dataset(
     dataset_dir: Path,
     metadata_file: Path,
-    dry_run: bool = False
+    dry_run: bool = False,
+    keep_one_caption_per_image: bool = True
 ) -> Tuple[List[Dict], List[Dict]]:
     """
     Validate dataset by checking if all referenced files exist.
@@ -34,6 +35,7 @@ def validate_dataset(
         dataset_dir: Path to dataset directory
         metadata_file: Path to metadata.jsonl file
         dry_run: If True, don't save changes (just report)
+        keep_one_caption_per_image: If True, only keep first valid entry per image
     
     Returns:
         (valid_entries, invalid_entries)
@@ -51,6 +53,7 @@ def validate_dataset(
     
     valid_entries = []
     invalid_entries = []
+    seen_valid_images = set()
     
     with open(metadata_file, 'r') as f:
         for line_num, line in enumerate(f, start=1):
@@ -83,12 +86,28 @@ def validate_dataset(
                     print(f"     - {missing}")
                 invalid_entries.append(entry)
             else:
+                image_key = entry["image"]
+                if keep_one_caption_per_image and image_key in seen_valid_images:
+                    print(f"⚠️  Line {line_num}: Duplicate caption for image '{image_key}' (keeping first, removing this one)")
+                    invalid_entries.append({
+                        "error": "duplicate_image",
+                        "line": line_num,
+                        "image": image_key,
+                        "conditioning": entry.get("conditioning", ""),
+                        "text": entry.get("text", "")
+                    })
+                    continue
+
+                seen_valid_images.add(image_key)
                 valid_entries.append(entry)
     
     print("-" * 60)
     print(f"\n✅ Valid entries: {len(valid_entries)}")
     print(f"❌ Invalid entries: {len(invalid_entries)}")
     print(f"📊 Total: {len(valid_entries) + len(invalid_entries)}")
+    if keep_one_caption_per_image:
+        duplicate_count = sum(1 for e in invalid_entries if isinstance(e, dict) and e.get("error") == "duplicate_image")
+        print(f"🧹 Duplicate captions removed: {duplicate_count}")
     
     if invalid_entries:
         print(f"\n⚠️  {len(invalid_entries)} entries will be removed")
@@ -192,6 +211,12 @@ def main():
         action="store_true",
         help="Don't create backup of original metadata file"
     )
+
+    parser.add_argument(
+        "--allow_multiple_captions",
+        action="store_true",
+        help="Keep multiple captions per image (default behavior is one caption per image)"
+    )
     
     args = parser.parse_args()
     
@@ -207,7 +232,8 @@ def main():
         valid_entries, invalid_entries = validate_dataset(
             dataset_dir,
             metadata_file,
-            dry_run=args.dry_run
+            dry_run=args.dry_run,
+            keep_one_caption_per_image=not args.allow_multiple_captions
         )
         
         # Print summary
