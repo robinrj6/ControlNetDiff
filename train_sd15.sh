@@ -1,16 +1,16 @@
 #!/bin/bash
-#SBATCH --job-name=controlnet_fill50k
+#SBATCH --job-name=controlnet_train_canny
 #SBATCH --gres=gpu:1
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --time=09:00:00
+#SBATCH --time=20:00:00
 #SBATCH --output=logs/controlnet_train_%j.log
 #SBATCH --error=logs/controlnet_train_%j.err
 
 export MODEL_DIR="/home/woody/rlvl/rlvl165v/ControlNetDiff/shared/models/sd15"
 export DATASET_DIR="/home/woody/rlvl/rlvl165v/ControlNetDiff/shared/datasets/coco/canny/"
-export OUTPUT_DIR="/home/woody/rlvl/rlvl165v/ControlNetDiff/output/"
+export OUTPUT_DIR="/home/woody/rlvl/rlvl165v/ControlNetDiff/output/canny_model/"
 
 export HF_HOME="/home/woody/rlvl/rlvl165v/.cache/huggingface"
 export HF_DATASETS_CACHE="$HF_HOME/datasets"

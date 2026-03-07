@@ -11,9 +11,18 @@ Optional:
 --skip-missing to skip missing files
 --image-prefix images (default)
 --conditioning-prefix edges (default)
+--image-ext .jpg (forces all images to use this extension)
+--conditioning-ext .png (forces all conditioning images to use this extension)
 --one-caption-per-image
 --skip-missing
 """
+
+
+def change_extension(file_name: str, new_ext: str) -> str:
+    """Return file_name with the new extension, keeping only the stem."""
+    if not new_ext.startswith("."):
+        new_ext = "." + new_ext
+    return Path(file_name).stem + new_ext
 
 
 def load_coco_pairs(coco_json_path: Path, one_caption_per_image: bool = False) -> List[Tuple[str, str]]:
@@ -93,6 +102,18 @@ def main() -> None:
         help="Prefix to write in 'conditioning_image' field (default: edges)",
     )
     parser.add_argument(
+        "--image-ext",
+        type=str,
+        default=None,
+        help="Force extension for normal images (e.g. .jpg). If omitted, keep original extension.",
+    )
+    parser.add_argument(
+        "--conditioning-ext",
+        type=str,
+        default=None,
+        help="Force extension for conditioning images (e.g. .png). If omitted, keep original extension.",
+    )
+    parser.add_argument(
         "--skip-missing",
         action="store_true",
         help="If set, skip records whose image file is missing in --images-dir",
@@ -117,8 +138,12 @@ def main() -> None:
 
     with args.output_jsonl.open("w", encoding="utf-8") as out_f:
         for file_name, caption in pairs:
+            # Apply extension changes if specified
+            image_file_name = change_extension(file_name, args.image_ext) if args.image_ext else file_name
+            conditioning_file_name = change_extension(file_name, args.conditioning_ext) if args.conditioning_ext else file_name
+            
             if args.images_dir is not None:
-                if not (args.images_dir / file_name).is_file():
+                if not (args.images_dir / image_file_name).is_file():
                     skipped_missing += 1
                     if args.skip_missing:
                         continue
@@ -126,9 +151,9 @@ def main() -> None:
             row = {
                 "text": caption,
                 # Required by newer `datasets` imagefolder loader
-                "file_name": f"{args.image_prefix}/{file_name}",
+                "file_name": f"{args.image_prefix}/{image_file_name}",
                 # Additional image column, exposed as `conditioning` in the dataset
-                "conditioning_file_name": f"{args.conditioning_prefix}/{file_name}",
+                "conditioning_file_name": f"{args.conditioning_prefix}/{conditioning_file_name}",
             }
             out_f.write(json.dumps(row, ensure_ascii=False) + "\n")
             written += 1
