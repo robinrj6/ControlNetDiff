@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=controlnet_fill50k
+#SBATCH --job-name=controlnet_canny
 #SBATCH --gres=gpu:1
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --time=09:00:00
-#SBATCH --output=logs/controlnet_train_%j.log
-#SBATCH --error=logs/controlnet_train_%j.err
+#SBATCH --output=logs/controlnet_canny_%j.log
+#SBATCH --error=logs/controlnet_canny_%j.err
 
-python Image_process/batch_canny.py --input shared/datasets/coco/canny/images/ --output shared/datasets/coco/canny/edges/ --recursive --workers 16
+python Image_process/batch_canny.py --input shared/datasets/coco/metricsDataset/images/ --output shared/datasets/coco/metricsDataset/edges/ --recursive --workers 16
