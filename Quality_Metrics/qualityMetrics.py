@@ -4,11 +4,19 @@ Compute FID (with pytorch-fid) and CLIP score for generated images.
 
 Edit the path variables in the CONFIG section, then run:
 	python Quality_Metrics/qualityMetrics.py
+
+NOTE: pytorch-fid requires Inception V3 weights. If you get connection errors,
+pre-download them by running this once on a machine with internet:
+	python -c "import torch; torch.hub.load_state_dict_from_url('https://github.com/mseitzer/pytorch-fid/releases/download/fid_weights/pt_inception-2015-12-05-6726825d.pth', progress=True)"
+
+Then copy ~/.cache/torch/hub/checkpoints/ to your cluster's cache directory.
+Or set TORCH_HOME environment variable to a shared cache location.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
@@ -34,6 +42,11 @@ FID_BATCH_SIZE = 32
 FID_DIMS = 2048
 FID_NUM_WORKERS = 4
 CLIP_BATCH_SIZE = 16
+
+# Set this to a directory containing pre-downloaded Inception weights if needed
+# Expected file: pt_inception-2015-12-05-6726825d.pth in $TORCH_HOME/hub/checkpoints/
+TORCH_HOME_OVERRIDE = (Path.cwd() / "shared" / "models" / "torch_cache").resolve()
+FID_WEIGHTS_FILENAME = "pt_inception-2015-12-05-6726825d.pth"
 
 
 VALID_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -151,9 +164,102 @@ def clip_score_for_folder(
 	skipped = len(all_images) - len(pairs)
 	return float(mean_score), int(total_count), int(skipped)
 
+def clip_aesthetic_score(
+    image_dir: Path,
+    model: CLIPModel,
+    processor: CLIPProcessor,
+    device: torch.device,
+) -> Tuple[float, int]:
+    """
+    Compute CLIP aesthetic score using aesthetic descriptors.
+    Based on: https://github.com/christophschuhmann/improved-aesthetic-predictor
+    """
+    all_images = list_images(image_dir)
+    
+    # Aesthetic prompts
+    aesthetic_prompts = [
+        "a photo of good composition",
+        "a photo of high quality",
+        "a professional photograph",
+    ]
+    
+    negative_prompts = [
+        "a photo of poor quality",
+        "a badly composed photo",
+        "an amateur photo",
+    ]
+    
+    total_score = 0.0
+    count = 0
+    
+    for batch in _batched(all_images, CLIP_BATCH_SIZE):
+        pil_images = [Image.open(img_path).convert("RGB") for img_path in batch]
+        
+        # Process positive prompts
+        pos_inputs = processor(
+            text=aesthetic_prompts, 
+            images=pil_images, 
+            return_tensors="pt", 
+            padding=True, 
+            truncation=True
+        )
+        pos_inputs = {k: v.to(device) for k, v in pos_inputs.items()}
+        
+        pos_image_features = model.get_image_features(pixel_values=pos_inputs["pixel_values"])
+        pos_text_features = model.get_text_features(
+            input_ids=pos_inputs["input_ids"],
+            attention_mask=pos_inputs["attention_mask"],
+        )
+        
+        # Process negative prompts
+        neg_inputs = processor(
+            text=negative_prompts, 
+            images=pil_images, 
+            return_tensors="pt", 
+            padding=True, 
+            truncation=True
+        )
+        neg_inputs = {k: v.to(device) for k, v in neg_inputs.items()}
+        
+        neg_image_features = model.get_image_features(pixel_values=neg_inputs["pixel_values"])
+        neg_text_features = model.get_text_features(
+            input_ids=neg_inputs["input_ids"],
+            attention_mask=neg_inputs["attention_mask"],
+        )
+        
+        # Normalize
+        pos_image_features = pos_image_features / pos_image_features.norm(dim=-1, keepdim=True)
+        pos_text_features = pos_text_features / pos_text_features.norm(dim=-1, keepdim=True)
+        
+        neg_image_features = neg_image_features / neg_image_features.norm(dim=-1, keepdim=True)
+        neg_text_features = neg_text_features / neg_text_features.norm(dim=-1, keepdim=True)
+        
+        # Aesthetic score = positive alignment - negative alignment
+        pos_scores = (pos_image_features * pos_text_features).mean(dim=1)
+        neg_scores = (neg_image_features * neg_text_features).mean(dim=1)
+        
+        aesthetic = (pos_scores - neg_scores) / 2.0  # Normalize to roughly 0-1
+        
+        total_score += aesthetic.sum().item()
+        count += len(batch)
+    
+    mean_aesthetic = total_score / max(count, 1)
+    return float(mean_aesthetic), int(count)
 
 def main() -> None:
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	
+	# Override torch hub cache location if specified
+	if TORCH_HOME_OVERRIDE is not None:
+		os.environ["TORCH_HOME"] = str(TORCH_HOME_OVERRIDE)
+		weights_path = TORCH_HOME_OVERRIDE / "hub" / "checkpoints" / FID_WEIGHTS_FILENAME
+		print(f"Using TORCH_HOME: {TORCH_HOME_OVERRIDE}")
+		print(f"Expected FID weights: {weights_path}")
+		if not weights_path.exists():
+			raise FileNotFoundError(
+				"FID weights not found in shared folder cache. "
+				f"Expected: {weights_path}"
+			)
 
 	# Validate required dirs/files
 	for p in [REAL_IMAGES_DIR, CANNY_IMAGES_DIR, CONTROLNET_IMAGES_DIR, SD15_IMAGES_DIR]:
@@ -205,12 +311,28 @@ def main() -> None:
 		device,
 	)
 
+	print("Computing CLIP aesthetic scores...")
+	aes_controlnet, aes_cn_count = clip_aesthetic_score(
+    	CONTROLNET_IMAGES_DIR,
+    	model,
+    	processor,
+    	device,
+	)
+	aes_sd15, aes_sd_count = clip_aesthetic_score(
+    	SD15_IMAGES_DIR,
+    	model,
+    	processor,
+    	device,
+	)
+    
+
 	print("\n===== Results =====")
 	print(f"FID   (Real vs ControlNet): {fid_controlnet:.4f}")
 	print(f"FID   (Real vs SD1.5)    : {fid_sd15:.4f}")
 	print(f"CLIP  (ControlNet)       : {clip_controlnet:.4f}  [used={used_cn}, skipped={skipped_cn}]")
 	print(f"CLIP  (SD1.5)            : {clip_sd15:.4f}  [used={used_sd}, skipped={skipped_sd}]")
-
+	print(f"CLIP Aesthetic (ControlNet): {aes_controlnet:.4f}")
+	print(f"CLIP Aesthetic (SD1.5)    : {aes_sd15:.4f}")
 
 if __name__ == "__main__":
 	main()
