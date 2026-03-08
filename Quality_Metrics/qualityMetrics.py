@@ -40,7 +40,7 @@ METADATA_JSONL_PATH = Path("shared/datasets/coco/metricsDataset/metadata.jsonl")
 CLIP_MODEL_ID = "openai/clip-vit-base-patch32"
 FID_BATCH_SIZE = 32
 FID_DIMS = 2048
-FID_NUM_WORKERS = 4
+FID_NUM_WORKERS = 0  # Set to 0 to avoid collation issues with variable-sized images
 CLIP_BATCH_SIZE = 16
 
 # Set this to a directory containing pre-downloaded Inception weights if needed
