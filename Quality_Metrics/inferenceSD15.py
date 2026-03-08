@@ -1,12 +1,14 @@
-from diffusers import StableDiffusionPipeline, UniPCMultistepScheduler
+from diffusers import StableDiffusionImg2ImgPipeline, UniPCMultistepScheduler
 from diffusers.utils import load_image
 import torch
 import os
+import json
+from pathlib import Path
 
 base_model_path = "/home/woody/rlvl/rlvl165v/ControlNetDiff/shared/models/sd15/"
 
-# Load only the base Stable Diffusion model
-pipe = StableDiffusionPipeline.from_pretrained(
+# Load with local_files_only=True to avoid trying to connect to huggingface.co
+pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
     base_model_path,
     torch_dtype=torch.float16,
     local_files_only=True
@@ -14,90 +16,46 @@ pipe = StableDiffusionPipeline.from_pretrained(
 
 # speed up diffusion process with faster scheduler and memory optimization
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+# remove following line if xformers is not installed or when using Torch 2.0.
 pipe.enable_xformers_memory_efficient_attention()
+# memory optimization.
 pipe.enable_model_cpu_offload()
 
-# Load 5 canny edge images from folder
-control_images_dir = "./results/canny/"
-control_images = []
-for i in range(1, 6):
-    img_path = os.path.join(control_images_dir, f"{i}.jpg")
-    if os.path.exists(img_path):
-        img = load_image(img_path)
-        # Resize to dimensions divisible by 8 (required by diffusion pipeline)
-        width, height = img.size
-        new_width = (width // 8) * 8
-        new_height = (height // 8) * 8
-        img = img.resize((new_width, new_height))
-        control_images.append(img)
-    else:
-        print(f"Warning: {img_path} not found")
+# Load metadata with prompts
+metadata_path = "shared/datasets/coco/metricsDataset/metadata.jsonl"
+metadata_dict = {}
+with open(metadata_path, 'r') as f:
+    for line in f:
+        entry = json.loads(line)
+        conditioning_file = entry['conditioning_file_name']
+        prompt = entry['text']
+        metadata_dict[Path(conditioning_file).name] = prompt
 
-if len(control_images) != 5:
-    raise ValueError(f"Expected 5 control images, but found {len(control_images)}")
+# Load canny edge images from folder and generate with prompts
+control_images_dir = "shared/datasets/coco/metricsDataset/edges/"
+output_dir = "shared/datasets/coco/metricsDataset/generated_images_SD15/"
+Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-# Define prompt sets for each image (4 prompt styles per image)
-prompt_sets = [
-    [  # Image 1
-        ("no_prompt", ""),
-        ("insufficient_prompt", "a high-quality image"),
-        ("conflicting_prompt", "delicious cake"),
-        ("perfect_prompt", "A big burly grizzly bear is show with grass in the background.")
-    ],
-    [  # Image 2
-        ("no_prompt", ""),
-        ("insufficient_prompt", "a high-quality image"),
-        ("conflicting_prompt", "delicious cake"),
-        ("perfect_prompt", "a woman standing on skiis while posing for the camera")
-    ],
-    [  # Image 3
-        ("no_prompt", ""),
-        ("insufficient_prompt", "a high-quality image"),
-        ("conflicting_prompt", "delicious cake"),
-        ("perfect_prompt", "A bus that is sitting on the street.")
-    ],
-    [  # Image 4
-        ("no_prompt", ""),
-        ("insufficient_prompt", "a high-quality image"),
-        ("conflicting_prompt", "delicious cake"),
-        ("perfect_prompt", "A herd of elephants walking away from a watering hole.")
-    ],
-    [  # Image 5
-        ("no_prompt", ""),
-        ("insufficient_prompt", "a high-quality image"),
-        ("conflicting_prompt", "delicious cake"),
-        ("perfect_prompt", "A little girl with a big, blue umbrella.")
-    ]
-]
-
-# Create output directory if it doesn't exist
-os.makedirs("./results/sd15", exist_ok=True)
-
-# Generate images for each of 5 images with 4 prompts each
-for img_idx, prompts in enumerate(prompt_sets, 1):
-    print(f"\n{'='*60}")
-    print(f"Generating Image {img_idx}/5")
-    print(f"{'='*60}")
-    
-    control_image = control_images[img_idx - 1]  # Get corresponding control image
-    
-    for name, prompt in prompts:
-        print(f"\n  Prompt Type: {name}")
-        print(f"  Prompt: '{prompt}'")
+for img_file in sorted(os.listdir(control_images_dir)):
+    if img_file.endswith((".png")):
+        img_path = os.path.join(control_images_dir, img_file)
+        control_image = load_image(img_path).convert("RGB")
         
-        generator = torch.manual_seed(img_idx)  # Different seed for each image
-        image = pipe(
-            prompt, 
-            num_inference_steps=20, 
+        # Get the prompt from metadata
+        prompt = metadata_dict.get(img_file, "a photo")
+        
+        # Generate image with Stable Diffusion (img2img)
+        generator = torch.Generator(device="cuda").manual_seed(42)
+        output = pipe(
+            prompt=prompt,
+            image=control_image,
             generator=generator,
-            height=control_image.height,
-            width=control_image.width
-        ).images[0]
+            num_inference_steps=30,
+            strength=0.8,
+            guidance_scale=7.5
+        )
         
-        output_path = f"./results/sd15/{img_idx:06d}_{name}.jpg"
-        image.save(output_path)
-        print(f"  Saved: {output_path}")
-
-print(f"\n{'='*60}")
-print("Completed generating 5 images with 4 prompts each!")
-print(f"{'='*60}")
+        # Save the generated image
+        output_path = os.path.join(output_dir, img_file)
+        output.images[0].save(output_path)
+        print(f"Generated: {img_file} with prompt: {prompt}")

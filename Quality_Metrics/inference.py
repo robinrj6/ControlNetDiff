@@ -2,11 +2,12 @@ from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, UniPCM
 from diffusers.utils import load_image
 import torch
 import os
+import json
 from pathlib import Path
 
 base_model_path = "/home/woody/rlvl/rlvl165v/ControlNetDiff/shared/models/sd15/"
 # Point directly to the output directory which contains config.json and safetensors file
-controlnet_path = "/home/woody/rlvl/rlvl165v/ControlNetDiff/output/"
+controlnet_path = "/home/woody/rlvl/rlvl165v/ControlNetDiff/output/canny_model/"
 
 # Load with local_files_only=True to avoid trying to connect to huggingface.co
 controlnet = ControlNetModel.from_pretrained(
@@ -28,80 +29,39 @@ pipe.enable_xformers_memory_efficient_attention()
 # memory optimization.
 pipe.enable_model_cpu_offload()
 
-# Load 5 canny edge images from folder
-control_images_dir = "./results/canny/"
-control_images = []
-for i in range(1, 6):
-    img_path = os.path.join(control_images_dir, f"{i}.jpg")
-    if os.path.exists(img_path):
-        control_images.append(load_image(img_path))
-    else:
-        print(f"Warning: {img_path} not found")
+# Load metadata with prompts
+metadata_path = "shared/datasets/coco/metricsDataset/metadata.jsonl"
+metadata_dict = {}
+with open(metadata_path, 'r') as f:
+    for line in f:
+        entry = json.loads(line)
+        conditioning_file = entry['conditioning_file_name']
+        prompt = entry['text']
+        metadata_dict[Path(conditioning_file).name] = prompt
 
-if len(control_images) != 5:
-    raise ValueError(f"Expected 5 control images, but found {len(control_images)}")
+# Load canny edge images from folder and generate with prompts
+control_images_dir = "shared/datasets/coco/metricsDataset/edges/"
+output_dir = "shared/datasets/coco/metricsDataset/generated_images_ControlNet/"
+Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-# Create output directory if it doesn't exist
-os.makedirs("./results/controlnet", exist_ok=True)
-
-# Define prompt sets for each image (4 prompt styles per image)
-prompt_sets = [
-    [  # Image 1
-        ("no_prompt", ""),
-        ("insufficient_prompt", "a high-quality image"),
-        ("conflicting_prompt", "delicious cake"),
-        ("perfect_prompt", "A big burly grizzly bear is show with grass in the background.")
-    ],
-    [  # Image 2
-        ("no_prompt", ""),
-        ("insufficient_prompt", "a high-quality image"),
-        ("conflicting_prompt", "delicious cake"),
-        ("perfect_prompt", "a woman standing on skiis while posing for the camera")
-    ],
-    [  # Image 3
-        ("no_prompt", ""),
-        ("insufficient_prompt", "a high-quality image"),
-        ("conflicting_prompt", "delicious cake"),
-        ("perfect_prompt", "A bus that is sitting on the street.")
-    ],
-    [  # Image 4
-        ("no_prompt", ""),
-        ("insufficient_prompt", "a high-quality image"),
-        ("conflicting_prompt", "delicious cake"),
-        ("perfect_prompt", "A herd of elephants walking away from a watering hole.")
-    ],
-    [  # Image 5
-        ("no_prompt", ""),
-        ("insufficient_prompt", "a high-quality image"),
-        ("conflicting_prompt", "delicious cake"),
-        ("perfect_prompt", "A little girl with a big, blue umbrella.")
-    ]
-]
-
-# Generate images for each of 5 images with 4 prompts each
-for img_idx, prompts in enumerate(prompt_sets, 1):
-    print(f"\n{'='*60}")
-    print(f"Generating Image {img_idx}/5")
-    print(f"{'='*60}")
-    
-    control_image = control_images[img_idx - 1]  # Get corresponding control image
-    
-    for name, prompt in prompts:
-        print(f"\n  Prompt Type: {name}")
-        print(f"  Prompt: '{prompt}'")
+for img_file in sorted(os.listdir(control_images_dir)):
+    if img_file.endswith((".png")):
+        img_path = os.path.join(control_images_dir, img_file)
+        control_image = load_image(img_path).convert("RGB")
         
-        generator = torch.manual_seed(img_idx)  # Different seed for each image
-        image = pipe(
-            prompt, 
-            num_inference_steps=20, 
-            generator=generator, 
-            image=control_image
-        ).images[0]
+        # Get the prompt from metadata
+        prompt = metadata_dict.get(img_file, "a photo")
         
-        output_path = f"./results/controlnet/{img_idx:06d}_{name}.jpg"
-        image.save(output_path)
-        print(f"  Saved: {output_path}")
-
-print(f"\n{'='*60}")
-print("Completed generating 5 images with 4 prompts each!")
-print(f"{'='*60}")
+        # Generate image with ControlNet
+        generator = torch.Generator(device="cuda").manual_seed(42)
+        output = pipe(
+            prompt=prompt,
+            image=control_image,
+            generator=generator,
+            num_inference_steps=20
+        )
+        
+        # Save the generated image
+        output_path = os.path.join(output_dir, img_file)
+        output.images[0].save(output_path)
+        print(f"Generated: {img_file} with prompt: {prompt}")
