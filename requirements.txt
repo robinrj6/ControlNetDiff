@@ -7,4 +7,5 @@ datasets
 xformers
 bitsandbytes
 opencv-python
-pytorch-fid
+pytorch_fid
+Pillow
