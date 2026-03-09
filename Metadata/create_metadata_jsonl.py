@@ -14,7 +14,6 @@ Optional:
 --image-ext .jpg (forces all images to use this extension)
 --conditioning-ext .png (forces all conditioning images to use this extension)
 --one-caption-per-image
---skip-missing
 """
 
 
