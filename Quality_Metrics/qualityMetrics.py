@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
@@ -24,6 +26,13 @@ import torch
 from PIL import Image
 from pytorch_fid.fid_score import calculate_fid_given_paths
 from transformers import CLIPModel, CLIPProcessor
+
+
+def log(msg: str) -> None:
+	"""Log with timestamp and flush to ensure visibility in real-time logs."""
+	timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+	print(f"[{timestamp}] {msg}", flush=True)
+	sys.stdout.flush()
 
 
 # =========================
@@ -95,7 +104,8 @@ def load_metadata_prompts(metadata_jsonl: Path) -> Dict[str, str]:
 
 def fid_score(real_dir: Path, generated_dir: Path, device: torch.device) -> float:
 	# pytorch-fid expects folder paths and computes FID over all images in each folder.
-	return float(
+	log(f"Starting FID calculation: {real_dir} vs {generated_dir}")
+	fid_value = float(
 		calculate_fid_given_paths(
 			[str(real_dir), str(generated_dir)],
 			batch_size=FID_BATCH_SIZE,
@@ -104,6 +114,8 @@ def fid_score(real_dir: Path, generated_dir: Path, device: torch.device) -> floa
 			num_workers=FID_NUM_WORKERS,
 		)
 	)
+	log(f"FID calculation complete: {fid_value:.4f}")
+	return fid_value
 
 
 def _batched(items: List[Tuple[Path, str]], batch_size: int) -> Iterable[List[Tuple[Path, str]]]:
@@ -125,6 +137,7 @@ def clip_score_for_folder(
 	Score per pair is cosine similarity between normalized image/text embeddings.
 	"""
 	all_images = list_images(image_dir)
+	log(f"  Found {len(all_images)} images in {image_dir}")
 
 	pairs: List[Tuple[Path, str]] = []
 	for img_path in all_images:
@@ -133,12 +146,16 @@ def clip_score_for_folder(
 			pairs.append((img_path, prompt))
 
 	if not pairs:
+		log(f"  No matching prompts found! Skipping {len(all_images)} images.")
 		return 0.0, 0, len(all_images)
 
+	log(f"  Processing {len(pairs)} image-prompt pairs in batches of {CLIP_BATCH_SIZE}...")
 	total_score = 0.0
 	total_count = 0
+	batch_num = 0
 
 	for batch in _batched(pairs, CLIP_BATCH_SIZE):
+		batch_num += 1
 		pil_images = [Image.open(img_path).convert("RGB") for img_path, _ in batch]
 		texts = [prompt for _, prompt in batch]
 
@@ -159,6 +176,8 @@ def clip_score_for_folder(
 
 		total_score += scores.sum().item()
 		total_count += scores.numel()
+		
+		log(f"    Batch {batch_num}: processed {len(batch)} pairs")
 
 	mean_score = total_score / max(total_count, 1)
 	skipped = len(all_images) - len(pairs)
@@ -175,6 +194,7 @@ def clip_aesthetic_score(
     Based on: https://github.com/christophschuhmann/improved-aesthetic-predictor
     """
     all_images = list_images(image_dir)
+    log(f"  Found {len(all_images)} images in {image_dir}")
     
     # Aesthetic prompts
     aesthetic_prompts = [
@@ -191,8 +211,12 @@ def clip_aesthetic_score(
     
     total_score = 0.0
     count = 0
+    batch_num = 0
+    
+    log(f"  Processing {len(all_images)} images in batches of {CLIP_BATCH_SIZE}...")
     
     for batch in _batched(all_images, CLIP_BATCH_SIZE):
+        batch_num += 1
         pil_images = [Image.open(img_path).convert("RGB") for img_path in batch]
         
         # Process positive prompts
@@ -242,60 +266,84 @@ def clip_aesthetic_score(
         
         total_score += aesthetic.sum().item()
         count += len(batch)
+        
+        log(f"    Batch {batch_num}: processed {len(batch)} images (total: {count}/{len(all_images)})")
     
     mean_aesthetic = total_score / max(count, 1)
     return float(mean_aesthetic), int(count)
 
 def main() -> None:
+	log("Initializing metrics computation...")
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	log(f"Device: {device}")
 	
 	# Override torch hub cache location if specified
 	if TORCH_HOME_OVERRIDE is not None:
 		os.environ["TORCH_HOME"] = str(TORCH_HOME_OVERRIDE)
 		weights_path = TORCH_HOME_OVERRIDE / "hub" / "checkpoints" / FID_WEIGHTS_FILENAME
-		print(f"Using TORCH_HOME: {TORCH_HOME_OVERRIDE}")
-		print(f"Expected FID weights: {weights_path}")
+		log(f"Using TORCH_HOME: {TORCH_HOME_OVERRIDE}")
+		log(f"Expected FID weights: {weights_path}")
 		if not weights_path.exists():
+			log(f"ERROR: FID weights not found!")
 			raise FileNotFoundError(
 				"FID weights not found in shared folder cache. "
 				f"Expected: {weights_path}"
 			)
+		log(f"✓ FID weights found")
 
 	# Validate required dirs/files
+	log("Validating input directories...")
 	for p in [REAL_IMAGES_DIR, CANNY_IMAGES_DIR, CONTROLNET_IMAGES_DIR, SD15_IMAGES_DIR]:
 		if not p.exists() or not p.is_dir():
+			log(f"ERROR: Missing directory {p}")
 			raise FileNotFoundError(f"Missing directory: {p}")
 	if not METADATA_JSONL_PATH.exists():
+		log(f"ERROR: Missing metadata file {METADATA_JSONL_PATH}")
 		raise FileNotFoundError(f"Missing metadata file: {METADATA_JSONL_PATH}")
+	log("✓ All directories and files validated")
 
 	# Quick visibility on dataset sizes
+	log("Counting images...")
 	n_real = len(list_images(REAL_IMAGES_DIR))
 	n_canny = len(list_images(CANNY_IMAGES_DIR))
 	n_controlnet = len(list_images(CONTROLNET_IMAGES_DIR))
 	n_sd15 = len(list_images(SD15_IMAGES_DIR))
 
-	print("===== Input summary =====")
-	print(f"Real images      : {n_real} -> {REAL_IMAGES_DIR}")
-	print(f"Canny images     : {n_canny} -> {CANNY_IMAGES_DIR}")
-	print(f"ControlNet images: {n_controlnet} -> {CONTROLNET_IMAGES_DIR}")
-	print(f"SD1.5 images     : {n_sd15} -> {SD15_IMAGES_DIR}")
-	print(f"Metadata         : {METADATA_JSONL_PATH}")
-	print(f"Device           : {device}")
-	print()
+	log("\n" + "="*60)
+	log("INPUT SUMMARY")
+	log("="*60)
+	log(f"Real images      : {n_real} -> {REAL_IMAGES_DIR}")
+	log(f"Canny images     : {n_canny} -> {CANNY_IMAGES_DIR}")
+	log(f"ControlNet images: {n_controlnet} -> {CONTROLNET_IMAGES_DIR}")
+	log(f"SD1.5 images     : {n_sd15} -> {SD15_IMAGES_DIR}")
+	log(f"Metadata         : {METADATA_JSONL_PATH}")
+	log(f"Device           : {device}")
+	log("="*60 + "\n")
 
 	# 1) FID with pytorch-fid
-	print("Computing FID with pytorch-fid...")
+	log("="*60)
+	log("STAGE 1/3: Computing FID with pytorch-fid...")
+	log("="*60)
 	fid_controlnet = fid_score(REAL_IMAGES_DIR, CONTROLNET_IMAGES_DIR, device)
+	log(f"✓ ControlNet FID: {fid_controlnet:.4f}")
+	
 	fid_sd15 = fid_score(REAL_IMAGES_DIR, SD15_IMAGES_DIR, device)
+	log(f"✓ SD1.5 FID: {fid_sd15:.4f}")
 
 	# 2) CLIP score (image-prompt alignment)
-	print("Loading CLIP model...")
+	log("="*60)
+	log("STAGE 2/3: Loading CLIP model and computing scores...")
+	log("="*60)
+	log("Loading CLIP model...")
 	processor = CLIPProcessor.from_pretrained(CLIP_MODEL_ID)
 	model = CLIPModel.from_pretrained(CLIP_MODEL_ID).to(device).eval()
+	log("✓ CLIP model loaded")
 
+	log("Loading metadata prompts...")
 	stem_to_prompt = load_metadata_prompts(METADATA_JSONL_PATH)
+	log(f"✓ Loaded {len(stem_to_prompt)} prompts")
 
-	print("Computing CLIP scores...")
+	log("Computing CLIP scores for ControlNet...")
 	clip_controlnet, used_cn, skipped_cn = clip_score_for_folder(
 		CONTROLNET_IMAGES_DIR,
 		stem_to_prompt,
@@ -303,6 +351,9 @@ def main() -> None:
 		processor,
 		device,
 	)
+	log(f"✓ ControlNet CLIP: {clip_controlnet:.4f} [used={used_cn}, skipped={skipped_cn}]")
+	
+	log("Computing CLIP scores for SD1.5...")
 	clip_sd15, used_sd, skipped_sd = clip_score_for_folder(
 		SD15_IMAGES_DIR,
 		stem_to_prompt,
@@ -310,29 +361,42 @@ def main() -> None:
 		processor,
 		device,
 	)
+	log(f"✓ SD1.5 CLIP: {clip_sd15:.4f} [used={used_sd}, skipped={skipped_sd}]")
 
-	print("Computing CLIP aesthetic scores...")
+	# 3) CLIP aesthetic scores
+	log("="*60)
+	log("STAGE 3/3: Computing CLIP aesthetic scores...")
+	log("="*60)
+	log("Computing aesthetic scores for ControlNet...")
 	aes_controlnet, aes_cn_count = clip_aesthetic_score(
     	CONTROLNET_IMAGES_DIR,
     	model,
     	processor,
     	device,
 	)
+	log(f"✓ ControlNet Aesthetic: {aes_controlnet:.4f} [processed={aes_cn_count}]")
+	
+	log("Computing aesthetic scores for SD1.5...")
 	aes_sd15, aes_sd_count = clip_aesthetic_score(
     	SD15_IMAGES_DIR,
     	model,
     	processor,
     	device,
 	)
+	log(f"✓ SD1.5 Aesthetic: {aes_sd15:.4f} [processed={aes_sd_count}]")
     
 
-	print("\n===== Results =====")
-	print(f"FID   (Real vs ControlNet): {fid_controlnet:.4f}")
-	print(f"FID   (Real vs SD1.5)    : {fid_sd15:.4f}")
-	print(f"CLIP  (ControlNet)       : {clip_controlnet:.4f}  [used={used_cn}, skipped={skipped_cn}]")
-	print(f"CLIP  (SD1.5)            : {clip_sd15:.4f}  [used={used_sd}, skipped={skipped_sd}]")
-	print(f"CLIP Aesthetic (ControlNet): {aes_controlnet:.4f}")
-	print(f"CLIP Aesthetic (SD1.5)    : {aes_sd15:.4f}")
+	log("\n" + "="*60)
+	log("FINAL RESULTS")
+	log("="*60)
+	log(f"FID   (Real vs ControlNet): {fid_controlnet:.4f}")
+	log(f"FID   (Real vs SD1.5)    : {fid_sd15:.4f}")
+	log(f"CLIP  (ControlNet)       : {clip_controlnet:.4f}  [used={used_cn}, skipped={skipped_cn}]")
+	log(f"CLIP  (SD1.5)            : {clip_sd15:.4f}  [used={used_sd}, skipped={skipped_sd}]")
+	log(f"CLIP Aesthetic (ControlNet): {aes_controlnet:.4f}")
+	log(f"CLIP Aesthetic (SD1.5)    : {aes_sd15:.4f}")
+	log("="*60)
+	log("✓ All metrics computation complete!")
 
 if __name__ == "__main__":
 	main()
