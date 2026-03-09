@@ -9,6 +9,6 @@
 #SBATCH --error=logs/controlnet_metrics_%j.err
 
 # Set HF_HOME to avoid downloading models during job (no internet access on cluster)
-export HF_HOME="$PWD/shared/models/huggingface_cache"
+# export HF_HOME="$PWD/shared/models/huggingface_cache"
 
-python Quality_Metrics/qualityMetrics.py
+python Quality_Metrics/test_all_checkpoints.py
