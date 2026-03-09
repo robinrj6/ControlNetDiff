@@ -335,9 +335,14 @@ def main() -> None:
 	log("STAGE 2/3: Loading CLIP model and computing scores...")
 	log("="*60)
 	log("Loading CLIP model...")
+	log(f"  Loading CLIPProcessor from: {CLIP_MODEL_ID}")
 	processor = CLIPProcessor.from_pretrained(CLIP_MODEL_ID)
+	log(f"  ✓ CLIPProcessor loaded")
+	
+	log(f"  Loading CLIPModel from: {CLIP_MODEL_ID}")
 	model = CLIPModel.from_pretrained(CLIP_MODEL_ID).to(device).eval()
-	log("✓ CLIP model loaded")
+	log(f"  ✓ CLIPModel loaded and moved to {device}")
+	log("✓ CLIP model fully loaded")
 
 	log("Loading metadata prompts...")
 	stem_to_prompt = load_metadata_prompts(METADATA_JSONL_PATH)
