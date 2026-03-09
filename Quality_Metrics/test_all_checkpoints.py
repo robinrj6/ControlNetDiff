@@ -118,14 +118,28 @@ def generate_images_for_checkpoint(
         print(f"  ✗ Failed to load ControlNet: {e}")
         return False
     
-    # Load pipeline from LOCAL SD1.5 path
+    # Use fp32 for stability (works with RTX 2080 Ti)
+    weight_dtype = torch.float32
+    
+    # Load pipeline
     try:
         pipeline = StableDiffusionControlNetPipeline.from_pretrained(
-            str(SD15_PATH),  # ← USE LOCAL SD1.5
+            str(SD15_PATH),
             controlnet=controlnet,
-            torch_dtype=torch.float16,
+            torch_dtype=weight_dtype,  # Use float32
             safety_checker=None,
-        ).to(DEVICE)
+        )
+        
+        # Explicitly move all components to device and dtype
+        pipeline.to(DEVICE)
+        pipeline.unet = pipeline.unet.to(weight_dtype)
+        pipeline.vae = pipeline.vae.to(weight_dtype)
+        pipeline.text_encoder = pipeline.text_encoder.to(weight_dtype)
+        pipeline.controlnet = pipeline.controlnet.to(weight_dtype)
+        
+        # Disable safety checker
+        pipeline.safety_checker = None
+        
     except Exception as e:
         print(f"  ✗ Failed to create pipeline: {e}")
         return False
@@ -160,11 +174,16 @@ def generate_images_for_checkpoint(
             if canny_img.size != (512, 512):
                 canny_img = canny_img.resize((512, 512), Image.Resampling.LANCZOS)
             
+            # Convert to tensor and ensure correct dtype
+            canny_tensor = torch.tensor(np.array(canny_img), dtype=weight_dtype).unsqueeze(0).unsqueeze(0)
+            canny_tensor = canny_tensor / 255.0  # Normalize to 0-1
+            canny_tensor = canny_tensor.to(DEVICE)
+            
             # Generate with ACTUAL PROMPT
             with torch.no_grad():
                 image = pipeline(
                     prompt=prompt,
-                    image=canny_img,
+                    image=canny_img,  # Let pipeline handle it
                     num_inference_steps=NUM_INFERENCE_STEPS,
                     guidance_scale=GUIDANCE_SCALE,
                     controlnet_conditioning_scale=1.0,
