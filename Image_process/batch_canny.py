@@ -12,8 +12,8 @@ def canny_edge_detection(image_path):
     return edges
 
 def main():
-    image_path = './test/'  # Replace with your image path
-    output_path = './edges/'
+    image_path = 'shared/datasets/coco/canny/images/'  # Replace with your image path
+    output_path = 'shared/datasets/coco/canny/edges/'
     
     # Create output directory if it doesn't exist
     if not os.path.exists(output_path):
@@ -25,7 +25,8 @@ def main():
         if filename.endswith('.jpg') :
             edges = canny_edge_detection(os.path.join(image_path, filename))
             if edges is not None:
-                cv.imwrite(os.path.join(output_path, filename), edges)
+                output_filename = os.path.splitext(filename)[0] + '.png'
+                cv.imwrite(os.path.join(output_path, output_filename), edges)
                 image_count += 1
                 print(f"Processed: {filename}")
     
