@@ -8,4 +8,4 @@
 #SBATCH --output=logs/controlnet_canny_%j.log
 #SBATCH --error=logs/controlnet_canny_%j.err
 
-python Image_process/batch_canny.py --input shared/datasets/coco/metricsDataset/images/ --output shared/datasets/coco/metricsDataset/edges/ --recursive --workers 16
+python Image_process/batch_canny.py
