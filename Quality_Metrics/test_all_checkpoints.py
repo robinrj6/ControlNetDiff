@@ -183,8 +183,10 @@ def generate_images_for_checkpoint(
             
             # Load Canny image
             canny_img = Image.open(canny_path).convert("L")
+            canny_img_rgb = Image.new("RGB", canny_img.size)
+            canny_img_rgb.paste(canny_img)
             if canny_img.size != (512, 512):
-                canny_img = canny_img.resize((512, 512), Image.Resampling.LANCZOS)
+                canny_img_rgb = canny_img_rgb.resize((512, 512), Image.Resampling.LANCZOS)
             
             # Generate
             with torch.no_grad():
@@ -192,7 +194,7 @@ def generate_images_for_checkpoint(
                     # ControlNet with conditioning
                     image = pipeline(
                         prompt=prompt,
-                        image=canny_img,
+                        image=canny_img_rgb,
                         num_inference_steps=NUM_INFERENCE_STEPS,
                         guidance_scale=GUIDANCE_SCALE,
                         controlnet_conditioning_scale=1.0,
