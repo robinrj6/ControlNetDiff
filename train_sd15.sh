@@ -37,7 +37,7 @@ accelerate launch train_controlnet.py \
  --num_train_epochs=1 \
  --max_train_steps=30000 \
  --validation_steps=1000 \
- --checkpointing_steps=5000 \
+ --checkpointing_steps=1000 \
  --gradient_checkpointing \
  --use_8bit_adam \
  --enable_xformers_memory_efficient_attention \
