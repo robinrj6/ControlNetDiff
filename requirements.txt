@@ -9,3 +9,6 @@ bitsandbytes
 opencv-python
 pytorch_fid
 Pillow
+imutils
+timm
+einops
