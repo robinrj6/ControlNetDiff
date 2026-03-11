@@ -32,9 +32,9 @@ print(f"✓ Using cached models from: {TORCH_HOME}")
 # =========================
 # CONFIG
 # =========================
-OUTPUT_DIR = Path("output/canny_model")
+OUTPUT_DIR = Path("output/depth_model")
 SD15_PATH = Path("/home/woody/rlvl/rlvl165v/ControlNetDiff/shared/models/sd15/")
-CANNY_DIR = Path("shared/datasets/coco/metricsDataset/edges")
+depth_DIR = Path("shared/datasets/coco/metricsDataset/edges")
 REAL_IMAGES_DIR = Path("shared/datasets/coco/metricsDataset/images")
 METADATA_FILE = Path("shared/datasets/coco/metricsDataset/metadata.jsonl")
 RESULTS_FILE = Path("checkpoint_fid_results.json")
@@ -84,7 +84,7 @@ def verify_paths():
     """Verify all required paths exist"""
     paths_to_check = {
         "SD1.5": SD15_PATH,
-        "Canny edges": CANNY_DIR,
+        "depth edges": depth_DIR,
         "Real images": REAL_IMAGES_DIR,
         "Metadata": METADATA_FILE,
         "Torch cache": TORCH_HOME,
@@ -144,7 +144,7 @@ def load_prompts_from_metadata(metadata_file):
 
 def generate_images_for_checkpoint(
     checkpoint_dir, 
-    canny_dir, 
+    depth_dir, 
     output_dir, 
     metadata_file,
     num_images=100,
@@ -191,25 +191,25 @@ def generate_images_for_checkpoint(
             log_message(f"  Traceback: {traceback.format_exc()}", "ERROR")
             return False
         
-        # Get Canny images
-        canny_images = sorted(list(canny_dir.glob("*.png")))[:num_images]
+        # Get depth images
+        depth_images = sorted(list(depth_dir.glob("*.png")))[:num_images]
         
-        if not canny_images:
-            log_message(f"  No Canny images found in {canny_dir}", "ERROR")
+        if not depth_images:
+            log_message(f"  No depth images found in {depth_dir}", "ERROR")
             return False
         
         output_dir.mkdir(parents=True, exist_ok=True)
         
         mode = "ControlNet" if generate_controlnet else "SD1.5 (baseline)"
-        log_message(f"  Generating {len(canny_images)} images ({mode}) with actual prompts...")
+        log_message(f"  Generating {len(depth_images)} images ({mode}) with actual prompts...")
         
         matched_count = 0
         unmatched_count = 0
         
-        for canny_path in tqdm(canny_images, desc=f"Generating ({mode})", leave=False):
+        for depth_path in tqdm(depth_images, desc=f"Generating ({mode})", leave=False):
             try:
                 # Get prompt for this image
-                prompt = stem_to_prompt.get(canny_path.stem)
+                prompt = stem_to_prompt.get(depth_path.stem)
                 
                 if prompt is None:
                     prompt = "a high-quality image"
@@ -217,19 +217,19 @@ def generate_images_for_checkpoint(
                 else:
                     matched_count += 1
                 
-                # Load Canny image
-                canny_img = Image.open(canny_path).convert("L")
-                canny_img_rgb = Image.new("RGB", canny_img.size)
-                canny_img_rgb.paste(canny_img)
-                if canny_img.size != (512, 512):
-                    canny_img_rgb = canny_img_rgb.resize((512, 512), Image.Resampling.LANCZOS)
+                # Load depth image
+                depth_img = Image.open(depth_path).convert("L")
+                depth_img_rgb = Image.new("RGB", depth_img.size)
+                depth_img_rgb.paste(depth_img)
+                if depth_img.size != (512, 512):
+                    depth_img_rgb = depth_img_rgb.resize((512, 512), Image.Resampling.LANCZOS)
                 
                 # Generate
                 with torch.no_grad():
                     if generate_controlnet:
                         image = pipeline(
                             prompt=prompt,
-                            image=canny_img_rgb,
+                            image=depth_img_rgb,
                             num_inference_steps=NUM_INFERENCE_STEPS,
                             guidance_scale=GUIDANCE_SCALE,
                             controlnet_conditioning_scale=1.0,
@@ -242,10 +242,10 @@ def generate_images_for_checkpoint(
                         ).images[0]
                 
                 # Save
-                image.save(output_dir / f"{canny_path.stem}.png", quality=95)
+                image.save(output_dir / f"{depth_path.stem}.png", quality=95)
             
             except Exception as e:
-                log_message(f"    Error generating for {canny_path.name}: {e}", "WARN")
+                log_message(f"    Error generating for {depth_path.name}: {e}", "WARN")
                 continue
         
         log_message(f"  ✓ Used {matched_count} actual prompts, {unmatched_count} defaults")
@@ -383,7 +383,7 @@ def main():
             log_message(f"  [1/2] Generating ControlNet images...")
             success_cn = generate_images_for_checkpoint(
                 checkpoint_dir, 
-                CANNY_DIR, 
+                depth_DIR, 
                 gen_dir_cn,
                 METADATA_FILE,
                 num_images=100,
@@ -401,7 +401,7 @@ def main():
                 log_message(f"  [2/2] Generating SD1.5 baseline images...")
                 success_sd15 = generate_images_for_checkpoint(
                     checkpoint_dir,
-                    CANNY_DIR, 
+                    depth_DIR, 
                     gen_dir_sd15,
                     METADATA_FILE,
                     num_images=100,
