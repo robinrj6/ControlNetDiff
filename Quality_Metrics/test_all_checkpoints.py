@@ -364,7 +364,8 @@ def main():
         if checkpoint_name in results and results[checkpoint_name].get('fid_controlnet') is not None:
             fid_cn = results[checkpoint_name]['fid_controlnet']
             fid_sd = results[checkpoint_name].get('fid_sd15', None)
-            log_message(f"\n{checkpoint_name}: ControlNet FID = {fid_cn:.4f}, SD1.5 FID = {fid_sd:.4f if fid_sd else 'N/A'} (cached)")
+            fid_sd_str = f"{fid_sd:.4f}" if fid_sd is not None else "N/A"
+            log_message(f"\n{checkpoint_name}: ControlNet FID = {fid_cn:.4f}, SD1.5 FID = {fid_sd_str} (cached)")
             continue
     
         log_message(f"\n{checkpoint_name}")
